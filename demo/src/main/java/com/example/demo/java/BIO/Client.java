@@ -37,7 +37,7 @@ public class Client {
             String userInput;
             while ((userInput = stdIn.readLine()) != null) {
                 out.println(userInput);
-                System.out.println("发送: " + in.readLine());
+                System.out.println("服务端回复消息: " + in.readLine());
             }
         } catch (UnknownHostException e) {
             System.err.println("不明主机，主机名为： " + hostName);

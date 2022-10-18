@@ -3,7 +3,6 @@
  */
 package com.example.demo.java.AIO;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -11,18 +10,17 @@ import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.charset.Charset;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 /**
- * Async Echo Server.
+ * Async Server.
  * 
- * @since 1.0.0 2019年9月29日
- * @author <a href="https://waylau.com">Way Lau</a>
+ * @since 1.0.0
+ * @author sgz
  */
-public class AioSyncServer {
-	public static int DEFAULT_PORT = 7;
+public class Server {
+	private static final int DEFAULT_PORT = 7;
 
 	/**
 	 */

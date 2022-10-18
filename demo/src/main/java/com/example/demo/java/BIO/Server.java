@@ -18,7 +18,7 @@ import java.net.Socket;
  */
 public class Server {
 
-	public static int DEFAULT_PORT = 7;
+	private static final int DEFAULT_PORT = 7;
 
 	public static void main(String[] args) throws IOException {
 		ServerSocket serverSocket = new ServerSocket(DEFAULT_PORT);
@@ -35,7 +35,7 @@ public class Server {
 			String inputLine;
 			while ((inputLine = in.readLine()) != null) {
 				// 发送信息给客户端
-				out.println(inputLine);
+				out.println("我收到你的消息了");
 				System.out.println("客户端发送消息 -> " + clientSocket.getRemoteSocketAddress() + ":" + inputLine);
 			}
 		} catch (IOException e) {

@@ -17,7 +17,7 @@ import java.nio.charset.Charset;
  * @since 1.0.0
  * @author sgz
  */
-public class AioSyncClient {
+public class Client {
 
 	private static final int DEFAULT_PORT = 7;
 	public static void main(String[] args) throws UnknownHostException {
