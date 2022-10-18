@@ -19,7 +19,7 @@ import java.nio.charset.Charset;
  */
 public class AioSyncClient {
 
-	public static int DEFAULT_PORT = 7;
+	private static final int DEFAULT_PORT = 7;
 	public static void main(String[] args) throws UnknownHostException {
 		InetAddress localHost = InetAddress.getLocalHost();
 

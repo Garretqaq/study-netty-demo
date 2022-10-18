@@ -27,19 +27,17 @@ public class AioSyncServer {
 	/**
 	 */
 	public static void main(String[] args) {
-		int port = DEFAULT_PORT;
-
 		AsynchronousServerSocketChannel serverChannel;
 		try {
 			serverChannel = AsynchronousServerSocketChannel.open();
-			InetSocketAddress address = new InetSocketAddress(port);
+			InetSocketAddress address = new InetSocketAddress(DEFAULT_PORT);
 			serverChannel.bind(address);
 
 			// 设置阐述
 			serverChannel.setOption(StandardSocketOptions.SO_RCVBUF, 4 * 1024);
 			serverChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
 
-			System.out.println("AsyncEchoServer已启动，端口：" + port);
+			System.out.println("AsyncEchoServer已启动，端口：" + DEFAULT_PORT);
 		} catch (IOException ex) {
 			ex.printStackTrace();
 			return;
