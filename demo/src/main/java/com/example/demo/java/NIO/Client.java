@@ -34,7 +34,7 @@ public class Client {
 			socketChannel = SocketChannel.open();
 			socketChannel.connect(new InetSocketAddress(hostName, DEFAULT_PORT));
 		} catch (IOException e) {
-			System.err.println("NonBlockingEchoClient异常： " + e.getMessage());
+			System.err.println("NoBlockingClient异常： " + e.getMessage());
 			System.exit(1);
 		}
 
@@ -46,18 +46,14 @@ public class Client {
 			while ((userInput = stdIn.readLine()) != null) {
 				writeBuffer.put(userInput.getBytes());
 				writeBuffer.flip();
-				writeBuffer.rewind();
 
 				// 写消息到管道
 				socketChannel.write(writeBuffer);
 
-				// 管道读消息
-				socketChannel.read(readBuffer);
-
 				// 清理缓冲区
 				writeBuffer.clear();
 				readBuffer.clear();
-				System.out.println("echo: " + userInput);
+				System.out.println("客户端输出: " + userInput);
 			}
 		} catch (UnknownHostException e) {
 			System.err.println("不明主机，主机名为： " + hostName);

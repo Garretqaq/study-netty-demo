@@ -64,8 +64,7 @@ public class Server {
 					Charset gbk = Charset.forName("gbk");
 					// 转换用户消息
 					String userMessage = new String(buffer.array(), buffer.position(), buffer.limit(), gbk);
-					System.out.println("客户端发送消息  -> "
-							+ socketChannel.getRemoteAddress() + "：" + userMessage);
+					System.out.println("客户端发送消息  -> " + socketChannel.getRemoteAddress() + "：" + userMessage);
 					
 					if (buffer.hasRemaining()) {
 						buffer.compact();

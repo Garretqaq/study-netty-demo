@@ -10,6 +10,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Set;
 
@@ -21,92 +22,83 @@ import java.util.Set;
  */
 public class Server {
 	private static final int DEFAULT_PORT = 7;
+	private static final int TIMEOUT = 3000;
 
-	public static void main(String[] args) {
+
+	public static void main(String[] args) throws IOException, InterruptedException {
 		ServerSocketChannel serverChannel;
 		Selector selector;
-		try {
-			serverChannel = ServerSocketChannel.open();
-			InetSocketAddress address = new InetSocketAddress(DEFAULT_PORT);
-			serverChannel.bind(address);
-			serverChannel.configureBlocking(false);
-			selector = Selector.open();
-			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-			System.out.println("NonBlokingEchoServer已启动，端口：" + DEFAULT_PORT);
-		} catch (IOException ex) {
-			ex.printStackTrace();
-			return;
-		}
+		serverChannel = ServerSocketChannel.open();
+		InetSocketAddress address = new InetSocketAddress(DEFAULT_PORT);
+		serverChannel.bind(address);
+		serverChannel.configureBlocking(false);
+		selector = Selector.open();
+		// channel注册到选择器当中，监听接收事件
+		serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+		System.out.println("NoBlockingServer已启动，端口：" + DEFAULT_PORT);
 
 		while (true) {
-			try {
-				selector.select();
-			} catch (IOException e) {
-				System.out.println("NonBlockingEchoServer异常!" + e.getMessage());
+			// 当有事件则可以进行处理，中间可以干其他的事情
+			if (selector.select(TIMEOUT) == 0) {
+				System.out.println("==");
+				continue;
 			}
-			Set<SelectionKey> readyKeys = selector.selectedKeys();
-			Iterator<SelectionKey> iterator = readyKeys.iterator();
-			while (iterator.hasNext()) {
+			Thread.sleep(4000);
+			System.out.println("当前事件" + selector.select());
+			System.out.println("当前key的个数为" + selector.selectedKeys().size());
+
+			Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+			while (iterator.hasNext()){
 				SelectionKey key = iterator.next();
-				iterator.remove();
-				try {
-					// 可连接
-					if (key.isAcceptable()) {
-						ServerSocketChannel server = (ServerSocketChannel) key.channel();
-						SocketChannel socketChannel = server.accept();
+				// 可连接
+				if (key.isAcceptable()) {
+					ServerSocketChannel server = (ServerSocketChannel) key.channel();
+					SocketChannel socketChannel = server.accept();
 
-						System.out.println("NonBlokingEchoServer接受客户端的连接：" + socketChannel);
+					System.out.println("NoBlockingServer接受客户端的连接：" + socketChannel);
 
-						// 设置为非阻塞
-						socketChannel.configureBlocking(false);
+					// 设置为非阻塞
+					socketChannel.configureBlocking(false);
 
-						// 客户端注册到Selector
-						SelectionKey clientKey = socketChannel.register(selector,
-								SelectionKey.OP_WRITE | SelectionKey.OP_READ);
+					// 客户端注册到Selector, 当触发读写事件则会使selector.select()加1
+					SelectionKey clientKey = socketChannel.register(selector,
+							SelectionKey.OP_WRITE | SelectionKey.OP_READ);
 
-						// 分配缓存区
-						ByteBuffer buffer = ByteBuffer.allocate(100);
-						clientKey.attach(buffer);
-					}
-
-					// 可读
-					if (key.isReadable()) {
-						SocketChannel client = (SocketChannel) key.channel();
-						ByteBuffer output = (ByteBuffer) key.attachment();
-						client.read(output);
-
-						System.out.println(client.getRemoteAddress() 
-								+ " -> NonBlokingEchoServer：" + output.toString());
-
-						key.interestOps(SelectionKey.OP_WRITE);
-					}
-
-					// 可写
-					if (key.isWritable()) {
-						SocketChannel client = (SocketChannel) key.channel();
-						ByteBuffer output = (ByteBuffer) key.attachment();
-						output.flip();
-						client.write(output);
-
-						System.out.println("NonBlokingEchoServer  -> " 
-								+ client.getRemoteAddress() + "：" + output.toString());
-
-						output.compact();
-
-						key.interestOps(SelectionKey.OP_READ);
-					}
-				} catch (IOException ex) {
-					key.cancel();
-					try {
-						key.channel().close();
-					} catch (IOException cex) {
-						System.out.println(
-								"NonBlockingEchoServer异常!" + cex.getMessage());
-					}
+					// 分配缓存区
+					ByteBuffer buffer = ByteBuffer.allocate(100);
+					clientKey.attach(buffer);
 				}
+
+				// 可读
+				if (key.isReadable()) {
+					SocketChannel client = (SocketChannel) key.channel();
+					ByteBuffer output = (ByteBuffer) key.attachment();
+					while (client.read(output) > 0){
+						output.flip();
+						String clientMessage = StandardCharsets.UTF_8.decode(output).toString();
+						System.out.println(client.getRemoteAddress() + " -> NoBlockingServer：" + clientMessage);
+						//清除之前的数据（覆盖写入）
+						output.clear();
+					}
+
+				}
+
+				// 可写
+//				if (key.isWritable()) {
+//					SocketChannel client = (SocketChannel) key.channel();
+//					ByteBuffer output = (ByteBuffer) key.attachment();
+//					client.write(output);
+//					output.flip();
+//					String clientMessage = StandardCharsets.UTF_8.decode(output).toString();
+//					System.out.println("NoBlockingServer  -> " + client.getRemoteAddress() + "：" + clientMessage);
+//
+//					output.compact();
+//					key.interestOps(SelectionKey.OP_READ);
+//				}
+				iterator.remove();
 			}
+
 		}
 	}
-
 }
