@@ -12,7 +12,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
-import java.util.Set;
 
 /**
  * No Blocking Server.
@@ -22,7 +21,7 @@ import java.util.Set;
  */
 public class Server {
 	private static final int DEFAULT_PORT = 7;
-	private static final int TIMEOUT = 3000;
+	private static final int TIMEOUT = 8000;
 
 
 	public static void main(String[] args) throws IOException, InterruptedException {
@@ -38,15 +37,14 @@ public class Server {
 		serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 		System.out.println("NoBlockingServer已启动，端口：" + DEFAULT_PORT);
 
+
 		while (true) {
-			// 当有事件则可以进行处理，中间可以干其他的事情
-			if (selector.select(TIMEOUT) == 0) {
-				System.out.println("==");
+			int selectNumber = selector.select(TIMEOUT);
+			if (selectNumber == 0) {
+				// 当有事件才进行处理，中间可以干其他的事情
 				continue;
 			}
-			Thread.sleep(4000);
-			System.out.println("当前事件" + selector.select());
-			System.out.println("当前key的个数为" + selector.selectedKeys().size());
+
 
 			Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
 			while (iterator.hasNext()){
