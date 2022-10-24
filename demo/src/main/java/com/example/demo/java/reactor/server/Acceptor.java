@@ -34,21 +34,18 @@ public class Acceptor implements ExecuteService {
 	 * 提交任务初始化
 	 */
 	public void build(){
-		ThreadPoolUtil.execute(() -> {
-			SocketChannel socketChannel;
-			try {
-				Iterator<SelectionKey> it = selector.selectedKeys().iterator();
-				socketChannel = serverSocketChannel.accept();
-				if (socketChannel != null) {
-					System.out.printf("已接受客户端: %s%n", socketChannel.getRemoteAddress());
+		SocketChannel socketChannel;
+		try {
+			socketChannel = serverSocketChannel.accept();
+			if (socketChannel != null) {
+				System.out.printf("已接受客户端: %s%n", socketChannel.getRemoteAddress());
 
-					// 这里把客户端通道传给Handler，Handler负责接下来的事件处理
-					new AsyncHandler(socketChannel, selector);
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
+				// 这里把客户端通道传给Handler，Handler负责接下来的事件处理
+				new AsyncHandler(socketChannel, selector);
 			}
-		});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 }

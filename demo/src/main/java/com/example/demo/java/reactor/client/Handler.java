@@ -11,6 +11,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Client 处理器
@@ -32,7 +34,7 @@ public class Handler implements ExecuteService {
 
 	private final AtomicInteger status = new AtomicInteger(SEND);// 与服务端不同，默认最开始是发送数据
 
-	private Selector selector;
+	private final Lock lock;
 
 
 	Handler(SocketChannel socketChannel, Selector selector) throws IOException {
@@ -41,43 +43,55 @@ public class Handler implements ExecuteService {
 		selectionKey = socketChannel.register(selector, SelectionKey.OP_WRITE); // 将该客户端注册到selector
 		selectionKey.attach(this); // 附加处理对象，当前是Handler对象
 		selector.wakeup(); // 唤起select阻塞
+		lock = new ReentrantLock(true); // 公平锁保证状态准确
 	}
 
 	@Override
 	public void build() {
+		// 尝试获取锁读取当前状态，防止多线程同时处理一个读写事件
 		if (status.get() == WAIT){
 			return;
 		}
 
 		ThreadPoolUtil.execute(() -> {
-			try {
-				switch (status.get()) {
-					case SEND:
-						send();
-						break;
-					case READ:
-						read();
-						break;
-					default:
+			synchronized (lock) {
+				// 如果未加到锁则代表有线程处理中，
+				boolean lockStatus = lock.tryLock();
+				if (!lockStatus){
+					return;
 				}
-			} catch (IOException e) {
-				// 这里的异常处理是做了汇总，同样的，客户端也面临着正在与服务端进行写/读数据时，
-				// 突然因为网络等原因，服务端直接断掉连接，这个时候客户端需要关闭自己并退出程序
-				System.err.println("send或read时发生异常！异常信息：" + e.getMessage());
-				selectionKey.cancel();
+
 				try {
-					socketChannel.close();
-				} catch (IOException e2) {
-					System.err.println("关闭通道时发生异常！异常信息：" + e2.getMessage());
-					e2.printStackTrace();
+					switch (status.get()) {
+						case SEND:
+							// 状态设置为等待，表示等待用户操作，不再创建新的线程
+							status.set(WAIT);
+							send();
+							break;
+						case READ:
+							status.set(WAIT);
+							read();
+							break;
+						default:
+					}
+				} catch (IOException e) {
+					// 这里的异常处理是做了汇总，同样的，客户端也面临着正在与服务端进行写/读数据时，
+					// 突然因为网络等原因，服务端直接断掉连接，这个时候客户端需要关闭自己并退出程序
+					System.err.println("send或read时发生异常！异常信息：" + e.getMessage());
+					selectionKey.cancel();
+					try {
+						socketChannel.close();
+					} catch (IOException e2) {
+						System.err.println("关闭通道时发生异常！异常信息：" + e2.getMessage());
+						e2.printStackTrace();
+					}
 				}
 			}
+
 		});
 	}
 
 	void send() throws IOException {
-		// 状态设置为等待，表示等待用户操作，不再创建新的线程
-		status.set(WAIT);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		String userMessage;
 		while ((userMessage = bufferedReader.readLine()) != null){
@@ -94,6 +108,9 @@ public class Handler implements ExecuteService {
 				socketChannel.close();
 			}
 		}
+		// 复位
+		status.set(READ);
+		lock.unlock();
 		System.out.println("send执行完成");
 	}
 
@@ -105,6 +122,7 @@ public class Handler implements ExecuteService {
 
 			// 收到服务端的响应后，再继续往服务端发送数据
 			status.set(SEND);
+			lock.unlock();
 			selectionKey.interestOps(SelectionKey.OP_WRITE); // 注册写事件
 		}
 	}

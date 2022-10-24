@@ -58,12 +58,11 @@ public class Reactor{
 						Object attachment = selectionKey.attachment();
 
 						/*
-						  此时attachment为Acceptor
+						  如果产生连接事件,此时attachment为Acceptor
 						  当新连接事件产生，select由阻塞转变为非阻塞，将连接事件交给Acceptor去处理。
-						  Acceptor用传过来的severChannel处理连接事件，本应selector应转为阻塞，事件已处理
-
-						  此时attachment为AsyncHandler
+						  Acceptor用传过来的severChannel处理连接事件，本应selector应转为阻塞，事件已处理.
 						  但同时Acceptor将读写事件交给AsyncHandler处理，重新注册了读写事件的key
+						  此时attachment为AsyncHandler
 						  selector便不再阻塞，直至读写事件的key给cancel(),才会变为阻塞
 						 */
 						ExecuteService acceptor = (ExecuteService) attachment;

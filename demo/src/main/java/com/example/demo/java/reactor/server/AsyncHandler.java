@@ -11,6 +11,8 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Async Handler
@@ -35,6 +37,10 @@ public class AsyncHandler implements ExecuteService {
 
 	private final AtomicInteger status = new AtomicInteger(READ); // 所有连接完成后都是从一个读取动作开始的
 
+	private final Lock lock;
+
+
+
 	AsyncHandler(SocketChannel socketChannel, Selector selector) throws IOException {
 		this.socketChannel = socketChannel; // 接收客户端连接
 		this.socketChannel.configureBlocking(false); // 置为非阻塞模式
@@ -43,6 +49,7 @@ public class AsyncHandler implements ExecuteService {
 		selectionKey.interestOps(SelectionKey.OP_READ); // 连接已完成，接下来就是读取动作
 		this.selector = selector;
 		this.selector.wakeup();
+		lock = new ReentrantLock(true);
 	}
 	public void build(){
 		// 如果状态在未处理，则表示已经有线程在执行不需要再分配任务
@@ -51,16 +58,25 @@ public class AsyncHandler implements ExecuteService {
 		}
 
 		ThreadPoolUtil.execute(() -> {
-			// 如果一个任务正在异步处理，那么这个execute是直接不触发任何处理的，
-			// read和send只负责简单的数据读取和响应，业务处理完全不阻塞这里的处理
-			switch (status.get()) {
-				case READ:
-					read();
-					break;
-				case SEND:
-					send();
-					break;
-				default:
+			synchronized (lock) {
+				// 如果未加到锁则代表有线程处理中，
+				boolean lockStatus = lock.tryLock();
+				if (!lockStatus){
+					return;
+				}
+				// 如果一个任务正在异步处理，那么这个execute是直接不触发任何处理的，
+				// read和send只负责简单的数据读取和响应，业务处理完全不阻塞这里的处理
+				switch (status.get()) {
+					case READ:
+						status.set(PROCESSING);
+						read();
+						break;
+					case SEND:
+						status.set(PROCESSING);
+						send();
+						break;
+					default:
+				}
 			}
 		});
 
@@ -74,7 +90,13 @@ public class AsyncHandler implements ExecuteService {
 				// read方法结束，意味着本次"读就绪"变为"读完毕"，标记着一次就绪事件的结束
 				int count = socketChannel.read(readBuffer);
 				if (count > 0) {
-					ThreadPoolUtil.execute(this::readWorker); // 异步处理
+					// 读入信息后的业务处理
+					readBuffer.flip();
+					String message = new String(readBuffer.array(), readBuffer.position(), readBuffer.limit(), StandardCharsets.UTF_8);
+					System.out.println("客户端"+ socketChannel.getRemoteAddress() + "的消息-----消息内容:" + message);
+					readBuffer.compact();
+					// selectionKey.interestOps(SelectionKey.OP_WRITE); // 注册写事件
+					this.selector.wakeup(); // 唤醒阻塞在select的线程
 				} else if (count < 0){
 					// 读模式下拿到的值是-1，说明客户端已经断开连接，那么将对应的selectKey从selector里清除，
 					// 否则下次还会select到，因为断开连接意味着读就绪不会变成读完毕，也不cancel，
@@ -94,7 +116,12 @@ public class AsyncHandler implements ExecuteService {
 				} catch (IOException e1) {
 					System.err.println("处理read业务关闭通道时发生异常！异常信息：" + e.getMessage());
 				}
+			}finally {
+				lock.unlock();
+				status.set(SEND);
+				selectionKey.interestOps(SelectionKey.OP_READ); // 重新设置为读
 			}
+
 		}
 	}
 
@@ -102,55 +129,39 @@ public class AsyncHandler implements ExecuteService {
 		if (selectionKey.isValid()) {
 			// 置为执行中
 			status.set(PROCESSING);
-			ThreadPoolUtil.execute(this::sendWorker); // 异步处理
-			selectionKey.interestOps(SelectionKey.OP_READ); // 重新设置为读
-		}
-	}
-
-	// 读入信息后的业务处理
-	private void readWorker()  {
-		try {
-			Thread.sleep(5000L);
-			readBuffer.flip();
-			String message = new String(readBuffer.array(), readBuffer.position(), readBuffer.limit(), StandardCharsets.UTF_8);
-			log.info("客户端{}的消息-----消息内容: {}", socketChannel.getRemoteAddress(), message);
-			readBuffer.compact();
-			status.set(SEND);
-			// selectionKey.interestOps(SelectionKey.OP_WRITE); // 注册写事件
-			this.selector.wakeup(); // 唤醒阻塞在select的线程
-		} catch (InterruptedException | IOException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private void sendWorker() {
-		try {
-			sendBuffer.clear();
-			sendBuffer.put(String
-					.format("recived %s from %s",  new String(readBuffer.array()),socketChannel.getRemoteAddress())
-					.getBytes());
-			sendBuffer.flip();
-
-			// write方法结束，意味着本次写就绪变为写完毕，标记着一次事件的结束
-			int count = socketChannel.write(sendBuffer);
-
-			if (count < 0) {
-				// 同上，write场景下，取到-1，也意味着客户端断开连接
-				selectionKey.cancel();
-				socketChannel.close();
-				System.out.println("send close");
-			}
-
-			// 没断开连接，则再次切换到读
-			status.set(READ);
-		} catch (IOException e) {
-			System.err.println("异步处理send业务时发生异常！异常信息：" + e.getMessage());
-			selectionKey.cancel();
 			try {
-				socketChannel.close();
-			} catch (IOException e1) {
-				System.err.println("异步处理send业务关闭通道时发生异常！异常信息：" + e.getMessage());
+				sendBuffer.clear();
+				sendBuffer.put(String
+						.format("recived %s from %s",  new String(readBuffer.array()),socketChannel.getRemoteAddress())
+						.getBytes());
+				sendBuffer.flip();
+
+				// write方法结束，意味着本次写就绪变为写完毕，标记着一次事件的结束
+				int count = socketChannel.write(sendBuffer);
+
+				if (count < 0) {
+					// 同上，write场景下，取到-1，也意味着客户端断开连接
+					selectionKey.cancel();
+					socketChannel.close();
+					System.out.println("send close");
+				}
+
+				// 没断开连接，则再次切换到读
+				status.set(READ);
+			} catch (IOException e) {
+				System.err.println("异步处理send业务时发生异常！异常信息：" + e.getMessage());
+				selectionKey.cancel();
+				try {
+					socketChannel.close();
+				} catch (IOException e1) {
+					System.err.println("异步处理send业务关闭通道时发生异常！异常信息：" + e.getMessage());
+				}
+			}finally {
+				lock.unlock();
+				selectionKey.interestOps(SelectionKey.OP_READ); // 重新设置为读
 			}
 		}
 	}
+
+
 }
