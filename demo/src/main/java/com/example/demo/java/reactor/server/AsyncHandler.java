@@ -11,8 +11,6 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Async Handler
@@ -37,9 +35,6 @@ public class AsyncHandler implements ExecuteService {
 
 	private final AtomicInteger status = new AtomicInteger(READ); // 所有连接完成后都是从一个读取动作开始的
 
-	private final Lock lock;
-
-
 
 	AsyncHandler(SocketChannel socketChannel, Selector selector) throws IOException {
 		this.socketChannel = socketChannel; // 接收客户端连接
@@ -49,7 +44,6 @@ public class AsyncHandler implements ExecuteService {
 		selectionKey.interestOps(SelectionKey.OP_READ); // 连接已完成，接下来就是读取动作
 		this.selector = selector;
 		this.selector.wakeup();
-		lock = new ReentrantLock(true);
 	}
 	public void build(){
 		// 如果状态在未处理，则表示已经有线程在执行不需要再分配任务
@@ -58,25 +52,22 @@ public class AsyncHandler implements ExecuteService {
 		}
 
 		ThreadPoolUtil.execute(() -> {
-			synchronized (lock) {
-				// 如果未加到锁则代表有线程处理中，
-				boolean lockStatus = lock.tryLock();
-				if (!lockStatus){
-					return;
-				}
-				// 如果一个任务正在异步处理，那么这个execute是直接不触发任何处理的，
-				// read和send只负责简单的数据读取和响应，业务处理完全不阻塞这里的处理
-				switch (status.get()) {
-					case READ:
-						status.set(PROCESSING);
-						read();
-						break;
-					case SEND:
-						status.set(PROCESSING);
-						send();
-						break;
-					default:
-				}
+			if (status.get() == PROCESSING){
+				return;
+			}
+
+			// 如果一个任务正在异步处理，那么这个execute是直接不触发任何处理的，
+			// read和send只负责简单的数据读取和响应，业务处理完全不阻塞这里的处理
+			switch (status.get()) {
+				case READ:
+					status.set(PROCESSING);
+					read();
+					break;
+				case SEND:
+					status.set(PROCESSING);
+					send();
+					break;
+				default:
 			}
 		});
 
@@ -117,7 +108,6 @@ public class AsyncHandler implements ExecuteService {
 					System.err.println("处理read业务关闭通道时发生异常！异常信息：" + e.getMessage());
 				}
 			}finally {
-				lock.unlock();
 				status.set(SEND);
 				selectionKey.interestOps(SelectionKey.OP_READ); // 重新设置为读
 			}
@@ -157,7 +147,6 @@ public class AsyncHandler implements ExecuteService {
 					System.err.println("异步处理send业务关闭通道时发生异常！异常信息：" + e.getMessage());
 				}
 			}finally {
-				lock.unlock();
 				selectionKey.interestOps(SelectionKey.OP_READ); // 重新设置为读
 			}
 		}
